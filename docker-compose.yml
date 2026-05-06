@@ -1,0 +1,45 @@
+
+services:
+  # ═══════════════════════════════════════════
+  # Backend — FastAPI + Algorithmes Python
+  # ═══════════════════════════════════════════
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloud-nash-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - cloud-nash-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ═══════════════════════════════════════════
+  # Frontend — React + Nginx
+  # ═══════════════════════════════════════════
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloud-nash-frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - cloud-nash-network
+
+networks:
+  cloud-nash-network:
+    driver: bridge

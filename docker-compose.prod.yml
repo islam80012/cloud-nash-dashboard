@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloud-nash-backend
+    expose:
+      - "8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - cloud-nash-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloud-nash-frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - cloud-nash-network
+
+networks:
+  cloud-nash-network:
+    driver: bridge
