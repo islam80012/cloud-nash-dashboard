@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Scenario, ViewMode, ComparisonResult } from '@/types';
-import { scenarios, computeComparison} from '@/data/mockData';
+import { scenarios } from '@/data/mockData';
+import { api } from '@/data/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import ScenarioSelector from '@/components/ScenarioSelector';
@@ -18,27 +19,45 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
   const [isComputing, setIsComputing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [customTasks, setCustomTasks] = useState<number[] | null>(null);
   const [customServers, setCustomServers] = useState<number[] | null>(null);
   const [showCustomPanel, setShowCustomPanel] = useState(false);
+  const [useBackend, setUseBackend] = useState(true);
 
   const currentTasks = customTasks ?? selectedScenario.tasks;
   const currentServers = customServers ?? selectedScenario.servers;
 
-  const runComputation = useCallback(() => {
+  // ── Calcul via backend FastAPI ──────────────────────────────────
+  const runComputation = useCallback(async () => {
     setIsComputing(true);
-    // Simulate async computation
-    setTimeout(() => {
-      const scenario: Scenario = {
-        ...selectedScenario,
-        tasks: currentTasks,
-        servers: currentServers,
-      };
-      const result = computeComparison(scenario);
-      setComparison(result);
-      setIsComputing(false);
-    }, 300);
-  }, [selectedScenario, currentTasks, currentServers]);
+    setError(null);
+
+    if (useBackend) {
+      try {
+        const result = await api.compare({
+          tasks: currentTasks,
+          servers: currentServers,
+          scenario_name: selectedScenario.name,
+        });
+        setComparison(result);
+      } catch (err) {
+        // Fallback sur mockData si le backend n'est pas disponible
+        console.warn('Backend indisponible, fallback mockData:', err);
+        setError('Backend non disponible — affichage des données locales');
+        const { computeComparison } = await import('@/data/mockData');
+        const scenario: Scenario = { ...selectedScenario, tasks: currentTasks, servers: currentServers };
+        setComparison(computeComparison(scenario));
+        setUseBackend(false);
+      }
+    } else {
+      const { computeComparison } = await import('@/data/mockData');
+      const scenario: Scenario = { ...selectedScenario, tasks: currentTasks, servers: currentServers };
+      setComparison(computeComparison(scenario));
+    }
+
+    setIsComputing(false);
+  }, [selectedScenario, currentTasks, currentServers, useBackend]);
 
   useEffect(() => {
     runComputation();
@@ -49,12 +68,14 @@ function App() {
     setCustomTasks(null);
     setCustomServers(null);
     setShowCustomPanel(false);
+    setUseBackend(true);
   };
 
   const handleCustomParams = (tasks: number[], servers: number[]) => {
     setCustomTasks(tasks);
     setCustomServers(servers);
     setShowCustomPanel(false);
+    setUseBackend(true);
   };
 
   const nashResult = comparison?.nash ?? null;
@@ -65,12 +86,38 @@ function App() {
       <Header viewMode={viewMode} onViewModeChange={setViewMode} />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar 
+        <Sidebar
           priceOfAnarchy={comparison?.priceOfAnarchy}
           improvement={comparison?.improvementPercent}
+          nashIterations={nashResult?.iterations}
+          nServers={currentServers.length}
+          nTasks={currentTasks.length}
         />
 
         <main className="flex-1 overflow-y-auto p-6">
+
+          {/* Bannière erreur backend */}
+          {error && (
+            <div className="mb-4 flex items-center gap-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-xl px-4 py-3 text-sm">
+              <span>⚠️</span>
+              <span>{error}</span>
+              <button
+                onClick={() => { setUseBackend(true); setError(null); runComputation(); }}
+                className="ml-auto text-xs underline hover:no-underline"
+              >
+                Réessayer
+              </button>
+            </div>
+          )}
+
+          {/* Bannière backend connecté */}
+          {!error && useBackend && comparison && (
+            <div className="mb-4 flex items-center gap-2 bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-2 text-xs">
+              <span>🟢</span>
+              <span>Connecté au backend FastAPI — calculs en temps réel</span>
+            </div>
+          )}
+
           {/* Scenario Selector */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
@@ -147,12 +194,12 @@ function App() {
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                    Makespan Comparison
+                    Comparaison Makespan
                   </h3>
                   <div className="h-64 flex items-end justify-center gap-8">
                     <div className="flex flex-col items-center">
-                      <div 
-                        className="w-24 bg-nash rounded-t-lg transition-all duration-500 flex items-end justify-center text-white font-bold pb-2"
+                      <div
+                        className="w-24 bg-nash rounded-t-lg transition-all duration-700 flex items-end justify-center text-white font-bold pb-2"
                         style={{ height: `${(nashResult?.makespan ?? 0) / Math.max(nashResult?.makespan ?? 1, lpResult?.makespan ?? 1) * 200}px` }}
                       >
                         {nashResult?.makespan.toFixed(2)}
@@ -160,8 +207,8 @@ function App() {
                       <span className="mt-2 text-sm font-medium text-gray-600">Nash</span>
                     </div>
                     <div className="flex flex-col items-center">
-                      <div 
-                        className="w-24 bg-optimal rounded-t-lg transition-all duration-500 flex items-end justify-center text-white font-bold pb-2"
+                      <div
+                        className="w-24 bg-optimal rounded-t-lg transition-all duration-700 flex items-end justify-center text-white font-bold pb-2"
                         style={{ height: `${(lpResult?.makespan ?? 0) / Math.max(nashResult?.makespan ?? 1, lpResult?.makespan ?? 1) * 200}px` }}
                       >
                         {lpResult?.makespan.toFixed(2)}

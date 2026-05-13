@@ -2,14 +2,53 @@ import random
 import statistics
 from typing import List, Dict, Any, Tuple
 from .nash import nash_equilibrium, get_loads, get_makespan
-from .lp_solver import solve_lp
+
+
+# ── Stratégies Joueur 1 (Scheduleur) ─────────────────────────────
+
+def _strategie_nash(tasks, servers, poids):
+    return nash_equilibrium(tasks, servers)["assignment"]
+
+def _strategie_greedy(tasks, servers, poids):
+    n, m = len(tasks), len(servers)
+    charges = [0.0] * m
+    result = [0] * n
+    ordre = sorted(range(n), key=lambda i: -tasks[i])
+    for i in ordre:
+        if poids:
+            charges_eff = [charges[j] / max(poids[j], 1e-9) for j in range(m)]
+        else:
+            charges_eff = charges[:]
+        j_min = min(range(m), key=lambda j: charges_eff[j])
+        result[i] = j_min
+        charges[j_min] += tasks[i] / servers[j_min]
+    return result
+
+def _strategie_rr(tasks, servers, poids):
+    n, m = len(servers), len(servers)
+    if poids:
+        total = sum(poids)
+        slots = []
+        for j, p in enumerate(poids):
+            count = max(1, round(p / total * m))
+            slots.extend([j] * count)
+    else:
+        slots = list(range(m))
+    return [slots[i % len(slots)] for i in range(len(tasks))]
+
+def _strategie_random(tasks, servers, poids):
+    return [random.randint(0, len(servers) - 1) for _ in tasks]
+
 
 STRATEGIES_J1 = [
-    ("S1_Nash", lambda tasks, servers, poids: nash_equilibrium(tasks, servers)["assignment"]),
-    ("S2_Greedy", lambda tasks, servers, poids: solve_lp(tasks, servers)["assignment"]),
-    ("S3_RR", lambda tasks, servers, poids: [i % len(servers) for i in range(len(tasks))]),
-    ("S4_Random", lambda tasks, servers, poids: [random.randint(0, len(servers) - 1) for _ in tasks]),
+    ("S1_Nash",   _strategie_nash),
+    ("S2_Greedy", _strategie_greedy),
+    ("S3_RR",     _strategie_rr),
+    ("S4_Random", _strategie_random),
 ]
+
+
+# ── Stratégies Joueur 2 (Gestionnaire) ───────────────────────────
 
 def gestionnaire_uniforme(servers: List[float]) -> List[float]:
     return [1.0] * len(servers)
@@ -24,10 +63,13 @@ def gestionnaire_equilibre(servers: List[float]) -> List[float]:
     return [round(x / total, 4) for x in inv]
 
 STRATEGIES_J2 = [
-    ("G1_Uniforme", gestionnaire_uniforme),
-    ("G2_Priorite", gestionnaire_priorite),
+    ("G1_Uniforme",  gestionnaire_uniforme),
+    ("G2_Priorite",  gestionnaire_priorite),
     ("G3_Equilibre", gestionnaire_equilibre),
 ]
+
+
+# ── Fonctions de gain ─────────────────────────────────────────────
 
 def gain_joueur1(assignment: List[int], tasks: List[float], servers: List[float]) -> float:
     return -round(get_makespan(assignment, tasks, servers), 4)
@@ -38,6 +80,9 @@ def gain_joueur2(assignment: List[int], tasks: List[float], servers: List[float]
         return 0.0
     return -round(statistics.stdev(loads), 4)
 
+
+# ── Construction de la table ──────────────────────────────────────
+
 def construire_table_gains(tasks: List[float], servers: List[float]) -> Dict[str, Any]:
     nb_s1 = len(STRATEGIES_J1)
     nb_s2 = len(STRATEGIES_J2)
@@ -47,19 +92,19 @@ def construire_table_gains(tasks: List[float], servers: List[float]) -> Dict[str
         ligne = []
         for j, (nom_s2, fn_s2) in enumerate(STRATEGIES_J2):
             poids = fn_s2(servers)
-            aff = fn_s1(tasks, servers, poids)
-            g1 = gain_joueur1(aff, tasks, servers)
-            g2 = gain_joueur2(aff, tasks, servers)
+            aff   = fn_s1(tasks, servers, poids)
+            g1    = gain_joueur1(aff, tasks, servers)
+            g2    = gain_joueur2(aff, tasks, servers)
             ligne.append({
                 "strategie_j1": nom_s1,
                 "strategie_j2": nom_s2,
-                "gain_j1": g1,
-                "gain_j2": g2,
-                "assignment": aff,
+                "gain_j1":      g1,
+                "gain_j2":      g2,
+                "assignment":   aff,
             })
         table.append(ligne)
 
-    # Détection Nash
+    # Détection Nash dans la table
     nash_cells = []
     for i in range(nb_s1):
         for j in range(nb_s2):
@@ -70,7 +115,7 @@ def construire_table_gains(tasks: List[float], servers: List[float]) -> Dict[str
             if g1_ij >= meilleur_j1 - 1e-6 and g2_ij >= meilleur_j2 - 1e-6:
                 nash_cells.append((i, j))
 
-    # Détection Pareto
+    # Détection Pareto dans la table
     pareto_cells = []
     all_cells = [(i, j) for i in range(nb_s1) for j in range(nb_s2)]
     for (i, j) in all_cells:
@@ -90,9 +135,9 @@ def construire_table_gains(tasks: List[float], servers: List[float]) -> Dict[str
             pareto_cells.append((i, j))
 
     return {
-        "table": table,
-        "labels_j1": [s[0] for s in STRATEGIES_J1],
-        "labels_j2": [s[0] for s in STRATEGIES_J2],
-        "nash_cells": nash_cells,
+        "table":       table,
+        "labels_j1":   [s[0] for s in STRATEGIES_J1],
+        "labels_j2":   [s[0] for s in STRATEGIES_J2],
+        "nash_cells":  nash_cells,
         "pareto_cells": pareto_cells,
     }

@@ -13,14 +13,11 @@ export default function NetworkTopology({ tasks, servers, assignment, title }: N
   const serverData = useMemo(() => {
     const loads = new Array(servers.length).fill(0);
     const taskCounts = new Array(servers.length).fill(0);
-
     for (let i = 0; i < tasks.length; i++) {
       loads[assignment[i]] += tasks[i] / servers[assignment[i]];
       taskCounts[assignment[i]]++;
     }
-
     const maxLoad = Math.max(...loads, 0.01);
-
     return servers.map((speed, j) => ({
       id: j,
       speed,
@@ -66,7 +63,7 @@ export default function NetworkTopology({ tasks, servers, assignment, title }: N
                 >
                   <span className="font-mono font-bold text-gray-700">T{i}</span>
                   <ArrowRight className="w-3 h-3 text-gray-400" />
-                  <span 
+                  <span
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: getColorForIndex(serverId) }}
                   />
@@ -83,42 +80,42 @@ export default function NetworkTopology({ tasks, servers, assignment, title }: N
             <Server className="w-4 h-4" />
             Serveurs
           </h4>
-
           {serverData.map((srv) => (
             <div key={srv.id} className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div 
-                    className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold"
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm"
                     style={{ backgroundColor: getColorForIndex(srv.id) }}
                   >
                     S{srv.id}
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-800">Serveur {srv.id}</p>
-                    <p className="text-xs text-gray-500">Vitesse: {srv.speed.toFixed(2)}</p>
+                    <p className="font-semibold text-gray-800 text-sm">Serveur {srv.id}</p>
+                    <p className="text-xs text-gray-500">Vitesse : {srv.speed.toFixed(2)}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold" style={{ color: srv.color }}>
-                    {srv.load.toFixed(2)}
+                    {srv.load.toFixed(3)}
                   </p>
-                  <p className="text-xs text-gray-400">charge</p>
+                  <p className="text-xs text-gray-400">{srv.taskCount} tâches</p>
                 </div>
               </div>
 
-              {/* Load Bar */}
+              {/* Barre de charge animée */}
               <div className="w-full bg-gray-100 rounded-full h-3 mb-3 overflow-hidden">
                 <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ 
+                  className="h-full rounded-full"
+                  style={{
                     width: `${Math.min((srv.load / maxLoad) * 100, 100)}%`,
                     backgroundColor: srv.color,
+                    transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
                   }}
                 />
               </div>
 
-              {/* Task Chips */}
+              {/* Task chips */}
               <div className="flex flex-wrap gap-1.5">
                 {srv.tasks.map((task) => (
                   <span
